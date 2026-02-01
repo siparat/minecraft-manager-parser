@@ -1,0 +1,63 @@
+import { PrismaClient } from '../generated/prisma';
+import { ConfigService } from './services/config.service';
+import { ParserGateway } from './gateways/parser.gateway';
+import { ParserService } from './services/parser.service';
+import { S3Service } from './services/s3.service';
+import { ModRepository } from './repositories/mod.repository';
+import { ContentParserService } from './services/content-parser.service';
+import { FileStorageService } from './services/file-storage.service';
+import { ScraperOrchestratorService } from './services/scraper-orchestrator.service';
+import inquirer from 'inquirer';
+import { logger } from './utils/logger';
+
+const getStartPage = async (): Promise<number | undefined> => {
+	const { startPage } = await inquirer.prompt({
+		type: 'number',
+		name: 'startPage',
+		message: 'С какой страницы начать? (введите 0, чтобы продолжить на которой остановились)'
+	});
+	return startPage ? (startPage == 0 ? undefined : startPage) : undefined;
+};
+
+export const bootstrap = async (): Promise<void> => {
+	const config = new ConfigService();
+	const gateway = new ParserGateway(config);
+	const s3Service = new S3Service(config);
+	const prismaClient = new PrismaClient();
+	const modRepository = new ModRepository(prismaClient);
+
+	const contentParser = new ContentParserService();
+	const fileStorage = new FileStorageService(s3Service, gateway, config);
+	const service = new ParserService(gateway, modRepository, contentParser, fileStorage);
+
+	const orchestrator = new ScraperOrchestratorService(gateway, service, modRepository);
+
+	const { action } = await inquirer.prompt([
+		{
+			type: 'list',
+			name: 'action',
+			message: 'Что вы хотите сделать?',
+			choices: [
+				{ name: '🚀 Запустить парсер модов (Scraper)', value: 'scrape' },
+				{ name: '🔄 Обновить файлы в S3 (для существующих модов)', value: 'update-s3' },
+				{ name: '❌ Выход', value: 'exit' }
+			]
+		}
+	]);
+
+	switch (action) {
+		case 'scrape':
+			await orchestrator.start(await getStartPage());
+			break;
+		case 'update-s3':
+			logger.info('Начинаем обновление файлов в S3...');
+			await service.updateModfilesInS3();
+			logger.info('Обновление файлов завершено.');
+			break;
+		case 'exit':
+			console.log('Выход.');
+			process.exit(0);
+	}
+};
+
+bootstrap();

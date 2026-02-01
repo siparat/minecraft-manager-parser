@@ -1,0 +1,42 @@
+model Mod {
+    id                Int              @id @default(autoincrement())
+    parsedSlug        String?          @unique
+    createdAt         DateTime         @default(now())
+    updatedAt         DateTime         @updatedAt
+    isParsed          Boolean?         @default(false)
+    category          ModCategory
+    rating            Float?
+    commentCounts     Int?
+    descriptionImages String[]         @default([])
+    title             String
+    description       String
+    translations      ModTranslation[]
+    htmlDescription   String?
+    image             String
+    files             String[]
+    versions          ModVersion[]
+    apps              AppMod[]
+}
+
+model ModVersion {
+    version String @id
+    mods    Mod[]
+}
+
+model ModTranslation {
+    id          Int      @id @default(autoincrement())
+    mod         Mod      @relation(fields: [modId], references: [id], onDelete: Cascade)
+    modId       Int
+    language    Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+    languageId  Int
+    description String
+
+    @@unique([modId, languageId])
+}
+
+enum ModCategory {
+    ADDON
+    WORLD
+    TEXTURE_PACK
+    SKIN_PACK
+}

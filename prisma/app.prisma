@@ -1,0 +1,94 @@
+model App {
+    id             Int              @id @default(autoincrement())
+    order          Int              @default(0)
+    createdAt      DateTime         @default(now())
+    updatedAt      DateTime         @updatedAt
+    packageName    String           @unique
+    status         AppStatus        @default(PLANNED)
+    logo           String
+    firebaseFile   String?
+    banner         String?
+    apk            String?
+    bundle         String?
+    appScreenshots String[]         @default([])
+    translations   AppTranslation[]
+    mods           AppMod[]
+    issues         AppIssue[]
+    sdk            AppSdk?
+}
+
+model AppMod {
+    id    Int @id @default(autoincrement())
+    app   App @relation(fields: [appId], references: [id], onDelete: Cascade)
+    appId Int
+    mod   Mod @relation(fields: [modId], references: [id], onDelete: Cascade)
+    modId Int
+    order Int @default(0)
+
+    @@unique([appId, modId])
+}
+
+model AppIssue {
+    id        Int         @id @default(autoincrement())
+    createdAt DateTime    @default(now())
+    email     String
+    text      String
+    status    IssueStatus @default(CREATED)
+    app       App         @relation(fields: [appId], references: [id], onDelete: Cascade)
+    appId     Int
+}
+
+model AppSdk {
+    appId         Int     @unique
+    app           App     @relation(fields: [appId], references: [id], onDelete: Cascade)
+    isAdsEnabled  Boolean @default(true)
+    metricaToken  String?
+    appLovinToken String?
+    adMobToken    String?
+
+    firstOpenCode   String?
+    firstInterCode  String?
+    firstNativeCode String?
+
+    secondOpenCode   String?
+    secondInterCode  String?
+    secondNativeCode String?
+
+    thirdOpenCode   String?
+    thirdInterCode  String?
+    thirdNativeCode String?
+}
+
+model Language {
+    id              Int              @id @default(autoincrement())
+    code            String           @unique
+    nameOriginal    String
+    nameRu          String
+    translations    AppTranslation[]
+    modTranslations ModTranslation[]
+}
+
+model AppTranslation {
+    id         Int      @id @default(autoincrement())
+    app        App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+    appId      Int
+    language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+    languageId Int
+    name       String
+
+    @@unique([appId, languageId])
+}
+
+enum AppStatus {
+    PLANNED
+    IN_PROGRESS
+    IN_MODERATION
+    IN_CORRECTION
+    PUBLISHED
+}
+
+enum IssueStatus {
+    CREATED
+    SOLVED
+    DELETED
+}
