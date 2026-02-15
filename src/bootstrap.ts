@@ -19,11 +19,37 @@ const getStartPage = async (): Promise<number | undefined> => {
 	return startPage ? (startPage == 0 ? undefined : startPage) : undefined;
 };
 
+const getUrlDatabase = async (config: ConfigService): Promise<string> => {
+	const { action } = await inquirer.prompt([
+		{
+			type: 'list',
+			name: 'action',
+			message: '❓ Для какого аккаунта парсить?',
+			choices: [
+				{ name: '🟢 Первый', value: 1 },
+				{ name: '🔴 Второй', value: 2 }
+			]
+		}
+	]);
+
+	switch (action) {
+		case 1:
+			return config.getOrThrow('FIRST_DATABASE_URL');
+		case 2:
+			return config.getOrThrow('SECOND_DATABASE_URL');
+		default:
+			throw new Error('URL Базы данных не найдена');
+	}
+};
+
 export const bootstrap = async (): Promise<void> => {
 	const config = new ConfigService();
 	const gateway = new ParserGateway(config);
 	const s3Service = new S3Service(config);
-	const prismaClient = new PrismaClient();
+
+	const databaseUrl = await getUrlDatabase(config);
+
+	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
 
 	const contentParser = new ContentParserService();

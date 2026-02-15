@@ -28,8 +28,7 @@ export class FileStorageService {
 				return null;
 			}
 
-			const ext = path.extname(new URL(url).pathname) || '.mcpack';
-			const s3Key = `mods/${randomUUID()}${ext}`;
+			const s3Key = this.createS3KeyByUrl(url);
 			const contentLength = response.headers.get('content-length');
 
 			logger.info({ url, s3Key, size: contentLength }, 'Файл скачан, начало загрузки в S3');
@@ -55,8 +54,7 @@ export class FileStorageService {
 		}
 
 		try {
-			const ext = path.extname(downloadResult.filename) || '.mcpack';
-			const s3Key = `mods/${randomUUID()}${ext}`;
+			const s3Key = this.createS3KeyByUrl(url, downloadResult.filename);
 
 			const stats = await fs.promises.stat(downloadResult.savePath);
 			logger.info({ url, s3Key, size: stats.size }, 'Файл скачан (Playwright), начало загрузки в S3');
@@ -73,5 +71,12 @@ export class FileStorageService {
 			logger.error({ err: error, url }, 'Ошибка при загрузке файла через Playwright');
 			return null;
 		}
+	}
+
+	private createS3KeyByUrl(url: string, filename?: string): string {
+		const pathname = new URL(url).pathname.split('/').pop()!;
+		const ext = path.extname(new URL(url).pathname) || '.mcpack';
+
+		return `mods/${decodeURI(pathname) || filename || randomUUID() + ext}`;
 	}
 }
