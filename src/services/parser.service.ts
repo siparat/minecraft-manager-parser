@@ -33,7 +33,7 @@ export class ParserService {
 			const files = await this.saveModfilesToS3(mod);
 
 			if (files) {
-				await this.modRepository.updateFiles(mod.id, files);
+				await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
 			}
 		}
 	}
