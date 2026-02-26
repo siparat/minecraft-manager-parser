@@ -48,9 +48,6 @@ export class ParserService {
 		let title = '';
 
 		if ('id' in mod) {
-			if (mod.files.every((v) => v.startsWith(process.env.S3_PUBLIC_DOMAIN || '') && !v.match(/[0-9a-fA-F-]{36}/))) {
-				return mod.files;
-			}
 			if (!mod.parsedSlug) return null;
 			slug = mod.parsedSlug;
 			title = mod.title;

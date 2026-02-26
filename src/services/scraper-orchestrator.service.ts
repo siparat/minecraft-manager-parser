@@ -12,7 +12,7 @@ import { logger } from '../utils/logger';
 export class ScraperOrchestratorService {
 	private page: number = 1;
 	private status: ParserStatus = ParserStatus.STOPPED;
-	private limit = pLimit(3);
+	private limit = pLimit(Number(process.env.PARSER_CONCURRENCY) || 3);
 	private progressFile = path.join(process.cwd(), 'parser-progress.json');
 
 	constructor(
@@ -85,7 +85,9 @@ export class ScraperOrchestratorService {
 		const shortMods = this.parserService.parseModsFromSearchPage(html);
 		if (!shortMods || shortMods.length === 0) return false;
 
-		const allSlugs = await this.modRepository.getModSlugs();
+		const pageSlugs = Array.from(new Set(shortMods.map((shortMod) => shortMod.slug).filter(Boolean)));
+		const existingMods = await this.modRepository.findBySlugs(pageSlugs);
+		const existingBySlug = new Map(existingMods.map((mod) => [mod.parsedSlug, mod]));
 
 		const tasks = shortMods.map((shortMod) =>
 			this.limit(async () => {
@@ -116,8 +118,8 @@ export class ScraperOrchestratorService {
 					});
 					entity.setVersions(modData.versions.map((version) => ({ version })));
 
-					if (allSlugs.includes(slug)) {
-						const existingMod = (await this.modRepository.findBySlug(slug)) as ModWithVersions;
+					const existingMod = existingBySlug.get(slug);
+					if (existingMod) {
 						entity.setVersions(entity.versions.concat(existingMod.versions));
 
 						await this.modRepository.update(existingMod.id, entity);

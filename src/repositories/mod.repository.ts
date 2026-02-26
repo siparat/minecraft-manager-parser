@@ -25,9 +25,12 @@ export class ModRepository {
 		}
 	}
 
-	async getModSlugs(): Promise<(string | null)[]> {
-		const mods = await this.database.mod.findMany({ where: { isParsed: true }, select: { parsedSlug: true } });
-		return mods.map(({ parsedSlug }) => parsedSlug);
+	async findBySlugs(slugs: string[]): Promise<ModWithVersions[]> {
+		if (!slugs.length) return [];
+		return this.database.mod.findMany({
+			where: { parsedSlug: { in: slugs } },
+			include: { versions: true, translations: true, _count: { select: { apps: true } } }
+		}) as unknown as ModWithVersions[];
 	}
 
 	async create({ translations, ...modEntity }: ModEntity): Promise<Mod> {

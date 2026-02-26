@@ -74,9 +74,19 @@ export class FileStorageService {
 	}
 
 	private createS3KeyByUrl(url: string, filename?: string): string {
-		const pathname = new URL(url).pathname.split('/').pop()!;
-		const ext = path.extname(new URL(url).pathname) || '.mcpack';
+		const parsedUrl = new URL(url);
+		const ext = path.extname(parsedUrl.pathname) || '.mcpack';
+		const pathSegment = parsedUrl.pathname.split('/').pop() || filename || '';
 
-		return `mods/${decodeURI(pathname) || filename || randomUUID() + ext}`;
+		let decodedName = pathSegment;
+		try {
+			decodedName = decodeURI(pathSegment);
+		} catch {
+			decodedName = pathSegment;
+		}
+
+		const safeName = decodedName.replace(/[^A-Za-z0-9.-]/g, '');
+
+		return `mods/${safeName || randomUUID() + ext}`;
 	}
 }
