@@ -1,8 +1,10 @@
 import { Download, ParsedMod, ParsedModShort } from '../interfaces/mod.interface';
 import { ParserGateway } from '../gateways/parser.gateway';
 import { ModRepository } from '../repositories/mod.repository';
+import { ModEntity } from '../entities/mod.entity';
 import { ContentParserService } from './content-parser.service';
 import { FileStorageService } from './file-storage.service';
+import { FailedFileItem, FailedModItem, FailedQueueService } from './failed-queue.service';
 import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 import { Mod } from 'generated/prisma';
@@ -13,7 +15,8 @@ export class ParserService {
 		private modRepository: ModRepository,
 		private contentParser: ContentParserService,
 		private fileStorage: FileStorageService,
-		private progressTracker?: ProgressTrackerService
+		private progressTracker?: ProgressTrackerService,
+		private failedQueue?: FailedQueueService
 	) {}
 
 	async getRelevantLinks(slug: string): Promise<ParsedMod['downloads'] | null> {
@@ -46,6 +49,9 @@ export class ParserService {
 			} catch (err) {
 				logger.error({ err, modId: mod.id, slug: mod.parsedSlug }, 'Ошибка при обновлении файлов мода');
 				this.progressTracker?.incFailed();
+				if (mod.parsedSlug) {
+					this.failedQueue?.addModFailure(mod.parsedSlug, 'update_s3_failed');
+				}
 			}
 		}
 	}
@@ -103,6 +109,10 @@ export class ParserService {
 						s3Url = await this.fileStorage.uploadFromUrl(file, title);
 					}
 
+					if (!s3Url && !file.startsWith('/uploads') && !file.startsWith(process.env.S3_PUBLIC_DOMAIN || '')) {
+						this.failedQueue?.addFileFailure(slug, file, 'file_upload_failed');
+					}
+
 					files.push(s3Url || file);
 				})
 			);
@@ -117,5 +127,89 @@ export class ParserService {
 
 	parseMod(slug: string, nuxt: any): ParsedMod | null {
 		return this.contentParser.parseMod(slug, nuxt);
+	}
+
+	async retryFailedItems(): Promise<void> {
+		const items = this.failedQueue?.list() || [];
+		if (!items.length) {
+			logger.info('Очередь failed items пуста.');
+			return;
+		}
+
+		const modItems = items.filter((item): item is FailedModItem => item.type === 'mod');
+		const fileItems = items.filter((item): item is FailedFileItem => item.type === 'file');
+		this.progressTracker?.incModsSeen(modItems.length);
+
+		for (const item of modItems) {
+			try {
+				await this.retryModItem(item);
+				this.failedQueue?.remove(item.id);
+				this.progressTracker?.incUpdated();
+			} catch (err) {
+				const reason = err instanceof Error ? err.message : 'retry_mod_failed';
+				this.failedQueue?.markAttempt(item.id, reason);
+				this.progressTracker?.incFailed();
+				logger.error({ err, slug: item.slug }, 'Не удалось повторно обработать мод');
+			}
+		}
+
+		for (const item of fileItems) {
+			try {
+				await this.retryFileItem(item);
+				this.failedQueue?.remove(item.id);
+			} catch (err) {
+				const reason = err instanceof Error ? err.message : 'retry_file_failed';
+				this.failedQueue?.markAttempt(item.id, reason);
+				logger.error({ err, slug: item.slug, url: item.url }, 'Не удалось повторно загрузить файл');
+			}
+		}
+	}
+
+	private async retryModItem(item: FailedModItem): Promise<void> {
+		const pageData = await this.parserGateway.getModPage(item.slug);
+		if (!pageData) {
+			throw new Error('mod_page_unavailable');
+		}
+
+		const modData = this.parseMod(item.slug, pageData.nuxtState);
+		if (!modData) {
+			throw new Error('mod_parse_failed');
+		}
+
+		let files: string[] = [];
+		if (process.env.SAVE_FILES_DEFAULT == 'true') {
+			files = (await this.saveModfilesToS3(modData)) || [];
+		} else {
+			files = modData.downloads.map((download) => download.file);
+		}
+
+		const entity = new ModEntity({
+			...modData,
+			parsedSlug: item.slug,
+			htmlDescription: modData.descriptionHtml,
+			files,
+			isParsed: true
+		});
+		entity.setVersions(modData.versions.map((version) => ({ version })));
+
+		const existingMod = await this.modRepository.findBySlug(item.slug);
+		if (existingMod) {
+			entity.setVersions(entity.versions.concat(existingMod.versions));
+			await this.modRepository.update(existingMod.id, entity);
+			return;
+		}
+
+		await this.modRepository.create(entity);
+	}
+
+	private async retryFileItem(item: FailedFileItem): Promise<void> {
+		if (item.url.startsWith('https://api.mcpedl.com')) {
+			const s3Url = await this.fileStorage.uploadFromPlaywright(item.url);
+			if (!s3Url) throw new Error('playwright_file_upload_failed');
+			return;
+		}
+
+		const s3Url = await this.fileStorage.uploadFromUrl(item.url, item.slug);
+		if (!s3Url) throw new Error('file_upload_failed');
 	}
 }

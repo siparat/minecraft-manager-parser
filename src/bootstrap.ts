@@ -7,6 +7,7 @@ import { ModRepository } from './repositories/mod.repository';
 import { ContentParserService } from './services/content-parser.service';
 import { FileStorageService } from './services/file-storage.service';
 import { ScraperOrchestratorService } from './services/scraper-orchestrator.service';
+import { FailedQueueService } from './services/failed-queue.service';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import inquirer from 'inquirer';
 import { logger } from './utils/logger';
@@ -52,15 +53,16 @@ export const bootstrap = async (): Promise<void> => {
 
 	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
+	const failedQueue = new FailedQueueService();
 
 	const progressIntervalMs = Number(config.get('PROGRESS_INTERVAL_MS')) || 3000;
 	const progressTracker = new ProgressTrackerService(progressIntervalMs);
 
 	const contentParser = new ContentParserService();
 	const fileStorage = new FileStorageService(s3Service, gateway, config, progressTracker);
-	const service = new ParserService(gateway, modRepository, contentParser, fileStorage, progressTracker);
+	const service = new ParserService(gateway, modRepository, contentParser, fileStorage, progressTracker, failedQueue);
 
-	const orchestrator = new ScraperOrchestratorService(gateway, service, modRepository, progressTracker);
+	const orchestrator = new ScraperOrchestratorService(gateway, service, modRepository, progressTracker, failedQueue);
 
 	const { action } = await inquirer.prompt([
 		{
@@ -70,6 +72,7 @@ export const bootstrap = async (): Promise<void> => {
 			choices: [
 				{ name: '🚀 Запустить парсер модов (Scraper)', value: 'scrape' },
 				{ name: '🔄 Обновить файлы в S3 (для существующих модов)', value: 'update-s3' },
+				{ name: '♻️ Повторить файлы и моды после ошибки', value: 'retry-failed' },
 				{ name: '❌ Выход', value: 'exit' }
 			]
 		}
@@ -88,6 +91,16 @@ export const bootstrap = async (): Promise<void> => {
 				progressTracker.stop();
 			}
 			logger.info('Обновление файлов завершено.');
+			break;
+		case 'retry-failed':
+			logger.info('Запускаем повторную обработку модов после ошибки...');
+			progressTracker.start('RETRY-FAILED');
+			try {
+				await service.retryFailedItems();
+			} finally {
+				progressTracker.stop();
+			}
+			logger.info('Повторная обработка модов после ошибки завершена.');
 			break;
 		case 'exit':
 			console.log('Выход.');

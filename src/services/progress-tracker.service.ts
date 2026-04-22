@@ -114,7 +114,7 @@ export class ProgressTrackerService {
 		const rate = processed > 0 ? (processed / el).toFixed(2) : '0.00';
 
 		logger.info(
-			`страница=${page} | встречено=${modsSeen} | +${modsCreated}/~${modsUpdated}/x${modsFailed} | файлы ok=${filesUploaded} fail=${filesFailed} skip=${filesSkipped} | ${rate} модов/сек | прошло=${this.formatElapsed(el)}`
+			`страница=${page} | встречено=${modsSeen} | моды +${modsCreated}/~${modsUpdated}/x${modsFailed} | файлы +${filesUploaded}/->${filesSkipped}/x${filesFailed} | ${rate} модов/сек | прошло=${this.formatElapsed(el)}`
 		);
 	}
 

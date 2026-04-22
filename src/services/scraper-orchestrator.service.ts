@@ -6,6 +6,7 @@ import { ParserGateway } from '../gateways/parser.gateway';
 import { ParserService } from './parser.service';
 import { ModRepository } from '../repositories/mod.repository';
 import { ModEntity } from '../entities/mod.entity';
+import { FailedQueueService } from './failed-queue.service';
 import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 
@@ -19,7 +20,8 @@ export class ScraperOrchestratorService {
 		private parserGateway: ParserGateway,
 		private parserService: ParserService,
 		private modRepository: ModRepository,
-		private progressTracker?: ProgressTrackerService
+		private progressTracker?: ProgressTrackerService,
+		private failedQueue?: FailedQueueService
 	) {
 		this.loadProgress();
 	}
@@ -106,12 +108,14 @@ export class ScraperOrchestratorService {
 					const pageData = await this.parserGateway.getModPage(slug);
 					if (!pageData) {
 						this.progressTracker?.incFailed();
+						this.failedQueue?.addModFailure(slug, 'mod_page_unavailable', pageNumber);
 						return;
 					}
 
 					const modData = this.parserService.parseMod(slug, pageData.nuxtState);
 					if (!modData) {
 						this.progressTracker?.incFailed();
+						this.failedQueue?.addModFailure(slug, 'mod_parse_failed', pageNumber);
 						return;
 					}
 
@@ -147,6 +151,7 @@ export class ScraperOrchestratorService {
 				} catch (e) {
 					logger.error({ err: e, slug }, 'Ошибка при обработке мода');
 					this.progressTracker?.incFailed();
+					this.failedQueue?.addModFailure(slug, 'mod_process_exception', pageNumber);
 				}
 			})
 		);
