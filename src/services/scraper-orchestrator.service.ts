@@ -46,7 +46,7 @@ export class ScraperOrchestratorService {
 		}
 	}
 
-	async start(startPage?: number): Promise<void> {
+	async start(startPage?: number, onPageCheckpoint?: (page: number) => void): Promise<void> {
 		if (this.status === ParserStatus.STARTED) {
 			logger.warn('Парсер уже запущен');
 			return;
@@ -68,6 +68,7 @@ export class ScraperOrchestratorService {
 					break;
 				}
 				this.saveProgress();
+				onPageCheckpoint?.(this.page);
 				this.page++;
 				this.progressTracker?.setPage(this.page);
 			}

@@ -1,0 +1,9 @@
+{
+  "mode": "scrape",
+  "status": "running",
+  "startedAt": "2026-04-22T16:20:56.824Z",
+  "updatedAt": "2026-04-22T16:20:56.828Z",
+  "checkpoint": {
+    "page": 1
+  }
+}

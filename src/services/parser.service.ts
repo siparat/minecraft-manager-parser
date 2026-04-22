@@ -56,6 +56,38 @@ export class ParserService {
 		}
 	}
 
+	async updateModfilesInS3WithResume(options?: {
+		resumeFromModId?: number;
+		onCheckpoint?: (modId: number) => void;
+	}): Promise<void> {
+		const mods = (await this.modRepository.findUsedMods()).sort((a, b) => a.id - b.id);
+		const resumeFromModId = options?.resumeFromModId;
+		const queue = typeof resumeFromModId === 'number' ? mods.filter((mod) => mod.id > resumeFromModId) : mods;
+
+		this.progressTracker?.incModsSeen(queue.length);
+
+		for (const mod of queue) {
+			try {
+				const files = await this.saveModfilesToS3(mod);
+
+				if (files) {
+					await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
+					this.progressTracker?.incUpdated();
+				} else {
+					this.progressTracker?.incFailed();
+				}
+			} catch (err) {
+				logger.error({ err, modId: mod.id, slug: mod.parsedSlug }, 'Ошибка при обновлении файлов мода');
+				this.progressTracker?.incFailed();
+				if (mod.parsedSlug) {
+					this.failedQueue?.addModFailure(mod.parsedSlug, 'update_s3_failed');
+				}
+			} finally {
+				options?.onCheckpoint?.(mod.id);
+			}
+		}
+	}
+
 	async updateSingleModFiles({ id }: { id: number }): Promise<void> {
 		const mod = await this.modRepository.findById(id);
 		if (!mod) {
@@ -157,15 +189,26 @@ export class ParserService {
 		return this.contentParser.parseMod(slug, nuxt);
 	}
 
-	async retryFailedItems(): Promise<void> {
+	async retryFailedItems(options?: {
+		resumeFromItemId?: string;
+		onCheckpoint?: (itemId: string) => void;
+	}): Promise<void> {
 		const items = this.failedQueue?.list() || [];
 		if (!items.length) {
 			logger.info('Очередь failed items пуста.');
 			return;
 		}
 
-		const modItems = items.filter((item): item is FailedModItem => item.type === 'mod');
-		const fileItems = items.filter((item): item is FailedFileItem => item.type === 'file');
+		let processingItems = items;
+		if (options?.resumeFromItemId) {
+			const index = items.findIndex((item) => item.id === options.resumeFromItemId);
+			if (index >= 0) {
+				processingItems = items.slice(index + 1);
+			}
+		}
+
+		const modItems = processingItems.filter((item): item is FailedModItem => item.type === 'mod');
+		const fileItems = processingItems.filter((item): item is FailedFileItem => item.type === 'file');
 		this.progressTracker?.incModsSeen(modItems.length);
 
 		for (const item of modItems) {
@@ -178,6 +221,8 @@ export class ParserService {
 				this.failedQueue?.markAttempt(item.id, reason);
 				this.progressTracker?.incFailed();
 				logger.error({ err, slug: item.slug }, 'Не удалось повторно обработать мод');
+			} finally {
+				options?.onCheckpoint?.(item.id);
 			}
 		}
 
@@ -189,6 +234,8 @@ export class ParserService {
 				const reason = err instanceof Error ? err.message : 'retry_file_failed';
 				this.failedQueue?.markAttempt(item.id, reason);
 				logger.error({ err, slug: item.slug, url: item.url }, 'Не удалось повторно загрузить файл');
+			} finally {
+				options?.onCheckpoint?.(item.id);
 			}
 		}
 	}

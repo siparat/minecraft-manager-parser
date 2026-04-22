@@ -9,6 +9,7 @@ import { FileStorageService } from './services/file-storage.service';
 import { ScraperOrchestratorService } from './services/scraper-orchestrator.service';
 import { FailedQueueService } from './services/failed-queue.service';
 import { ProgressTrackerService } from './services/progress-tracker.service';
+import { RunMode, RunStateService } from './services/run-state.service';
 import inquirer from 'inquirer';
 import { logger } from './utils/logger';
 
@@ -102,6 +103,23 @@ const getSingleModSelector = async (modRepository: ModRepository): Promise<{ id:
 	return { id };
 };
 
+const askResume = async (mode: RunMode, runStateService: RunStateService): Promise<boolean> => {
+	const state = runStateService.getState();
+	if (!state || state.mode !== mode) return false;
+	if (state.status !== 'running' && state.status !== 'crashed') return false;
+
+	const { resume } = await inquirer.prompt([
+		{
+			type: 'confirm',
+			name: 'resume',
+			message: `Найдено незавершенное состояние для ${mode}. Продолжить с последнего места?`,
+			default: true
+		}
+	]);
+
+	return Boolean(resume);
+};
+
 export const bootstrap = async (): Promise<void> => {
 	const config = new ConfigService();
 	const gateway = new ParserGateway(config);
@@ -112,6 +130,7 @@ export const bootstrap = async (): Promise<void> => {
 	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
 	const failedQueue = new FailedQueueService();
+	const runStateService = new RunStateService();
 
 	const progressIntervalMs = Number(config.get('PROGRESS_INTERVAL_MS')) || 3000;
 	const progressTracker = new ProgressTrackerService(progressIntervalMs);
@@ -139,13 +158,38 @@ export const bootstrap = async (): Promise<void> => {
 
 	switch (action) {
 		case 'scrape':
-			await orchestrator.start(await getStartPage());
+			await (async (): Promise<void> => {
+				const shouldResume = await askResume('scrape', runStateService);
+				const state = runStateService.getState();
+				const startPage = shouldResume ? state?.checkpoint.page : await getStartPage();
+				runStateService.start('scrape', { page: startPage || 1 });
+				try {
+					await orchestrator.start(startPage, (page) => runStateService.checkpoint({ page }));
+					runStateService.complete();
+				} catch (err) {
+					const message = err instanceof Error ? err.message : 'scrape_crashed';
+					runStateService.crash(message);
+					throw err;
+				}
+			})();
 			break;
 		case 'update-s3':
 			logger.info('Начинаем обновление файлов в S3...');
 			progressTracker.start('UPDATE-S3');
 			try {
-				await service.updateModfilesInS3();
+				const shouldResume = await askResume('update-s3', runStateService);
+				const state = runStateService.getState();
+				const resumeFromModId = shouldResume ? state?.checkpoint.modId : undefined;
+				runStateService.start('update-s3', { modId: resumeFromModId });
+				await service.updateModfilesInS3WithResume({
+					resumeFromModId,
+					onCheckpoint: (modId) => runStateService.checkpoint({ modId })
+				});
+				runStateService.complete();
+			} catch (err) {
+				const message = err instanceof Error ? err.message : 'update_s3_crashed';
+				runStateService.crash(message);
+				throw err;
 			} finally {
 				progressTracker.stop();
 			}
