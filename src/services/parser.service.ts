@@ -3,6 +3,8 @@ import { ParserGateway } from '../gateways/parser.gateway';
 import { ModRepository } from '../repositories/mod.repository';
 import { ContentParserService } from './content-parser.service';
 import { FileStorageService } from './file-storage.service';
+import { ProgressTrackerService } from './progress-tracker.service';
+import { logger } from '../utils/logger';
 import { Mod } from 'generated/prisma';
 
 export class ParserService {
@@ -10,7 +12,8 @@ export class ParserService {
 		private parserGateway: ParserGateway,
 		private modRepository: ModRepository,
 		private contentParser: ContentParserService,
-		private fileStorage: FileStorageService
+		private fileStorage: FileStorageService,
+		private progressTracker?: ProgressTrackerService
 	) {}
 
 	async getRelevantLinks(slug: string): Promise<ParsedMod['downloads'] | null> {
@@ -28,12 +31,21 @@ export class ParserService {
 
 	async updateModfilesInS3(): Promise<void> {
 		const mods = await this.modRepository.findUsedMods();
+		this.progressTracker?.incModsSeen(mods.length);
 
 		for (const mod of mods) {
-			const files = await this.saveModfilesToS3(mod);
+			try {
+				const files = await this.saveModfilesToS3(mod);
 
-			if (files) {
-				await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
+				if (files) {
+					await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
+					this.progressTracker?.incUpdated();
+				} else {
+					this.progressTracker?.incFailed();
+				}
+			} catch (err) {
+				logger.error({ err, modId: mod.id, slug: mod.parsedSlug }, 'Ошибка при обновлении файлов мода');
+				this.progressTracker?.incFailed();
 			}
 		}
 	}
@@ -72,25 +84,29 @@ export class ParserService {
 
 		const files: string[] = [];
 
-		await Promise.allSettled(
-			downloads.map(async ({ file }) => {
-				let s3Url: string | null;
-				if (file.startsWith('https://api.mcpedl.com')) {
-					s3Url = await this.fileStorage.uploadFromPlaywright(file);
-				} else if (file.startsWith('/uploads') || file.startsWith(process.env.S3_PUBLIC_DOMAIN || '')) {
-					files.push(file);
-					return;
-				} else {
-					s3Url = await this.fileStorage.uploadFromUrl(file, title);
-				}
+		const chunkSize = 5;
 
-				if (s3Url) {
-					files.push(s3Url);
-				} else {
-					files.push(file);
-				}
-			})
-		);
+		for (let i = 0; i < downloads.length; i += chunkSize) {
+			const chunk = downloads.slice(i, i + chunkSize);
+
+			await Promise.allSettled(
+				chunk.map(async ({ file }) => {
+					let s3Url: string | null;
+
+					if (file.startsWith('https://api.mcpedl.com')) {
+						s3Url = await this.fileStorage.uploadFromPlaywright(file);
+					} else if (file.startsWith('/uploads') || file.startsWith(process.env.S3_PUBLIC_DOMAIN || '')) {
+						files.push(file);
+						this.progressTracker?.incFilesSkipped();
+						return;
+					} else {
+						s3Url = await this.fileStorage.uploadFromUrl(file, title);
+					}
+
+					files.push(s3Url || file);
+				})
+			);
+		}
 
 		return files;
 	}

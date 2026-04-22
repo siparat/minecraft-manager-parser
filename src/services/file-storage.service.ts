@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import { S3Service } from './s3.service';
 import { ConfigService } from './config.service';
 import { ParserGateway } from '../gateways/parser.gateway';
+import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 
 export class FileStorageService {
@@ -13,7 +14,8 @@ export class FileStorageService {
 	constructor(
 		private s3Service: S3Service,
 		private parserGateway: ParserGateway,
-		config: ConfigService
+		config: ConfigService,
+		private progressTracker?: ProgressTrackerService
 	) {
 		this.s3PublicDomain = config.getOrThrow('S3_PUBLIC_DOMAIN');
 	}
@@ -25,6 +27,7 @@ export class FileStorageService {
 
 			if (response.status !== 200 || !response.body) {
 				logger.error({ url, status: response.status, modTitle }, 'Не удалось скачать файл по ссылке');
+				this.progressTracker?.incFilesFailed();
 				return null;
 			}
 
@@ -37,10 +40,12 @@ export class FileStorageService {
 			const result = await this.s3Service.uploadFile(stream, s3Key);
 
 			logger.info({ key: result.Key }, 'Файл успешно загружен в S3');
+			this.progressTracker?.incFilesUploaded();
 
 			return this.s3PublicDomain + '/' + result.Key;
 		} catch (error) {
 			logger.error({ err: error, url }, 'Ошибка при загрузке файла по URL');
+			this.progressTracker?.incFilesFailed();
 			return null;
 		}
 	}
@@ -50,6 +55,7 @@ export class FileStorageService {
 		const downloadResult = await this.parserGateway.downloadFile(url);
 		if (!downloadResult) {
 			logger.error({ url }, 'Не удалось скачать файл через Playwright');
+			this.progressTracker?.incFilesFailed();
 			return null;
 		}
 
@@ -65,10 +71,12 @@ export class FileStorageService {
 			await fs.promises.unlink(downloadResult.savePath).catch(() => {});
 
 			logger.info({ key: result.Key }, 'Файл успешно загружен в S3 (Playwright)');
+			this.progressTracker?.incFilesUploaded();
 
 			return this.s3PublicDomain + '/' + result.Key;
 		} catch (error) {
 			logger.error({ err: error, url }, 'Ошибка при загрузке файла через Playwright');
+			this.progressTracker?.incFilesFailed();
 			return null;
 		}
 	}

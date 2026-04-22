@@ -6,7 +6,7 @@ import { ParserGateway } from '../gateways/parser.gateway';
 import { ParserService } from './parser.service';
 import { ModRepository } from '../repositories/mod.repository';
 import { ModEntity } from '../entities/mod.entity';
-import { ModWithVersions } from '../interfaces/mod.interface';
+import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 
 export class ScraperOrchestratorService {
@@ -18,7 +18,8 @@ export class ScraperOrchestratorService {
 	constructor(
 		private parserGateway: ParserGateway,
 		private parserService: ParserService,
-		private modRepository: ModRepository
+		private modRepository: ModRepository,
+		private progressTracker?: ProgressTrackerService
 	) {
 		this.loadProgress();
 	}
@@ -53,6 +54,8 @@ export class ScraperOrchestratorService {
 		this.page = startPage || this.page;
 
 		logger.info(`Парсер начинает работу с ${this.page} страницы`);
+		this.progressTracker?.start('SCRAPE');
+		this.progressTracker?.setPage(this.page);
 
 		try {
 			while (this.status === ParserStatus.STARTED) {
@@ -64,10 +67,13 @@ export class ScraperOrchestratorService {
 				}
 				this.saveProgress();
 				this.page++;
+				this.progressTracker?.setPage(this.page);
 			}
 		} catch (error) {
 			logger.error({ err: error }, 'Критическая ошибка в цикле парсинга');
 			this.status = ParserStatus.STOPPED;
+		} finally {
+			this.progressTracker?.stop();
 		}
 
 		logger.info('Парсер закончил работу');
@@ -89,6 +95,8 @@ export class ScraperOrchestratorService {
 		const existingMods = await this.modRepository.findBySlugs(pageSlugs);
 		const existingBySlug = new Map(existingMods.map((mod) => [mod.parsedSlug, mod]));
 
+		this.progressTracker?.incModsSeen(shortMods.length);
+
 		const tasks = shortMods.map((shortMod) =>
 			this.limit(async () => {
 				if (this.status !== ParserStatus.STARTED) return;
@@ -96,10 +104,16 @@ export class ScraperOrchestratorService {
 				const { slug } = shortMod;
 				try {
 					const pageData = await this.parserGateway.getModPage(slug);
-					if (!pageData) return;
+					if (!pageData) {
+						this.progressTracker?.incFailed();
+						return;
+					}
 
 					const modData = this.parserService.parseMod(slug, pageData.nuxtState);
-					if (!modData) return;
+					if (!modData) {
+						this.progressTracker?.incFailed();
+						return;
+					}
 
 					let files: string[] = [];
 
@@ -124,12 +138,15 @@ export class ScraperOrchestratorService {
 
 						await this.modRepository.update(existingMod.id, entity);
 						logger.info(`Мод ${slug} обновлен`);
+						this.progressTracker?.incUpdated();
 					} else {
 						await this.modRepository.create(entity);
 						logger.info(`Мод ${slug} добавлен`);
+						this.progressTracker?.incCreated();
 					}
 				} catch (e) {
 					logger.error({ err: e, slug }, 'Ошибка при обработке мода');
+					this.progressTracker?.incFailed();
 				}
 			})
 		);

@@ -7,6 +7,7 @@ import { ModRepository } from './repositories/mod.repository';
 import { ContentParserService } from './services/content-parser.service';
 import { FileStorageService } from './services/file-storage.service';
 import { ScraperOrchestratorService } from './services/scraper-orchestrator.service';
+import { ProgressTrackerService } from './services/progress-tracker.service';
 import inquirer from 'inquirer';
 import { logger } from './utils/logger';
 
@@ -52,11 +53,14 @@ export const bootstrap = async (): Promise<void> => {
 	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
 
-	const contentParser = new ContentParserService();
-	const fileStorage = new FileStorageService(s3Service, gateway, config);
-	const service = new ParserService(gateway, modRepository, contentParser, fileStorage);
+	const progressIntervalMs = Number(config.get('PROGRESS_INTERVAL_MS')) || 3000;
+	const progressTracker = new ProgressTrackerService(progressIntervalMs);
 
-	const orchestrator = new ScraperOrchestratorService(gateway, service, modRepository);
+	const contentParser = new ContentParserService();
+	const fileStorage = new FileStorageService(s3Service, gateway, config, progressTracker);
+	const service = new ParserService(gateway, modRepository, contentParser, fileStorage, progressTracker);
+
+	const orchestrator = new ScraperOrchestratorService(gateway, service, modRepository, progressTracker);
 
 	const { action } = await inquirer.prompt([
 		{
@@ -77,7 +81,12 @@ export const bootstrap = async (): Promise<void> => {
 			break;
 		case 'update-s3':
 			logger.info('Начинаем обновление файлов в S3...');
-			await service.updateModfilesInS3();
+			progressTracker.start('UPDATE-S3');
+			try {
+				await service.updateModfilesInS3();
+			} finally {
+				progressTracker.stop();
+			}
 			logger.info('Обновление файлов завершено.');
 			break;
 		case 'exit':
