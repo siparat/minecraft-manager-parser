@@ -56,6 +56,34 @@ export class ParserService {
 		}
 	}
 
+	async updateSingleModFiles({ id }: { id: number }): Promise<void> {
+		const mod = await this.modRepository.findById(id);
+		if (!mod) {
+			throw new Error('Мод не найден в базе данных');
+		}
+
+		this.progressTracker?.incModsSeen(1);
+
+		try {
+			const files = await this.saveModfilesToS3(mod);
+			if (!files) {
+				if (mod.parsedSlug) {
+					this.failedQueue?.addModFailure(mod.parsedSlug, 'single_mod_update_failed');
+				}
+				throw new Error('Не удалось обновить файлы мода');
+			}
+
+			await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
+			this.progressTracker?.incUpdated();
+		} catch (err) {
+			this.progressTracker?.incFailed();
+			if (mod.parsedSlug) {
+				this.failedQueue?.addModFailure(mod.parsedSlug, 'single_mod_update_exception');
+			}
+			throw err;
+		}
+	}
+
 	async saveModfilesToS3(mod: Pick<Mod, 'id' | 'parsedSlug' | 'title' | 'files'>): Promise<string[] | null>;
 	async saveModfilesToS3(mod: ParsedMod): Promise<string[] | null>;
 	async saveModfilesToS3(

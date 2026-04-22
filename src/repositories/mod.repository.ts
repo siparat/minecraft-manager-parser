@@ -33,6 +33,10 @@ export class ModRepository {
 		}) as unknown as ModWithVersions[];
 	}
 
+	async getByName(name: string): Promise<Mod[]> {
+		return this.database.mod.findMany({ where: { title: name } });
+	}
+
 	async create({ translations, ...modEntity }: ModEntity): Promise<Mod> {
 		try {
 			return await this.database.mod.create({

@@ -44,6 +44,64 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 	}
 };
 
+const getSingleModSelector = async (modRepository: ModRepository): Promise<{ id: number }> => {
+	const { type } = await inquirer.prompt([
+		{
+			type: 'list',
+			name: 'type',
+			message: 'Как найти мод для обновления файлов?',
+			choices: [
+				{ name: 'По точному названию', value: 'name' },
+				{ name: 'По id', value: 'id' }
+			]
+		}
+	]);
+
+	if (type === 'name') {
+		const { name } = await inquirer.prompt([
+			{
+				type: 'input',
+				name: 'name',
+				message: 'Введите точное название мода',
+				validate: (value: string): true | string => (value?.trim() ? true : 'name не может быть пустым')
+			}
+		]);
+
+		const mods = await modRepository.getByName(name);
+
+		if (mods.length === 0) {
+			throw new Error('Мод с таким названием не найден');
+		}
+
+		if (mods.length == 1) {
+			return { id: mods[0].id };
+		}
+
+		const { id } = await inquirer.prompt([
+			{
+				type: 'list',
+				name: 'id',
+				message: 'Выберите мод',
+				choices: mods.map((mod) => ({ name: `${mod.title} (id: ${mod.id}, оценка: ${mod.rating})`, value: mod.id }))
+			}
+		]);
+
+		return { id };
+	}
+
+	const { id } = await inquirer.prompt([
+		{
+			type: 'number',
+			name: 'id',
+			message: 'Введите id мода',
+			validate: (value: number): true | string =>
+				Number.isInteger(value) && value > 0 ? true : 'ID должен быть положительным целым числом'
+		}
+	]);
+
+	return { id };
+};
+
 export const bootstrap = async (): Promise<void> => {
 	const config = new ConfigService();
 	const gateway = new ParserGateway(config);
@@ -72,7 +130,8 @@ export const bootstrap = async (): Promise<void> => {
 			choices: [
 				{ name: '🚀 Запустить парсер модов (Scraper)', value: 'scrape' },
 				{ name: '🔄 Обновить файлы в S3 (для существующих модов)', value: 'update-s3' },
-				{ name: '♻️ Повторить файлы и моды после ошибки', value: 'retry-failed' },
+				{ name: '🎯 Обновить файлы конкретного мода', value: 'update-single-mod-files' },
+				{ name: '♻️  Повторить файлы и моды после ошибки', value: 'retry-failed' },
 				{ name: '❌ Выход', value: 'exit' }
 			]
 		}
@@ -91,6 +150,17 @@ export const bootstrap = async (): Promise<void> => {
 				progressTracker.stop();
 			}
 			logger.info('Обновление файлов завершено.');
+			break;
+		case 'update-single-mod-files':
+			try {
+				const { id } = await getSingleModSelector(modRepository);
+				logger.info('Запускаем обновление файлов у конкретного мода...');
+				progressTracker.start('UPDATE-SINGLE-MOD');
+				await service.updateSingleModFiles({ id });
+			} finally {
+				progressTracker.stop();
+			}
+			logger.info('Обновление файлов конкретного мода завершено.');
 			break;
 		case 'retry-failed':
 			logger.info('Запускаем повторную обработку модов после ошибки...');
