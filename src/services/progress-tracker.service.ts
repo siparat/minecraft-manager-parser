@@ -17,6 +17,7 @@ export class ProgressTrackerService {
 	private timer: NodeJS.Timeout | null = null;
 	private readonly intervalMs: number;
 	private label: string = 'PROGRESS';
+	private liveLineActive: boolean = false;
 
 	constructor(intervalMs: number = 3000) {
 		this.intervalMs = intervalMs;
@@ -26,8 +27,10 @@ export class ProgressTrackerService {
 		this.label = label;
 		this.stats = this.initialStats();
 		this.stats.startedAt = Date.now();
+		this.liveLineActive = false;
 
 		if (this.timer) clearInterval(this.timer);
+		this.render();
 		this.timer = setInterval(() => this.render(), this.intervalMs);
 		this.timer.unref?.();
 	}
@@ -37,6 +40,7 @@ export class ProgressTrackerService {
 			clearInterval(this.timer);
 			this.timer = null;
 		}
+		this.clearLiveLine();
 		this.renderFinal();
 	}
 
@@ -112,10 +116,14 @@ export class ProgressTrackerService {
 			this.stats;
 		const processed = modsCreated + modsUpdated + modsFailed;
 		const rate = processed > 0 ? (processed / el).toFixed(2) : '0.00';
+		const line = `[${this.label}] страница=${page} | встречено=${modsSeen} | моды +${modsCreated}/~${modsUpdated}/x${modsFailed} | файлы +${filesUploaded}/->${filesSkipped}/x${filesFailed} | ${rate} модов/сек | прошло=${this.formatElapsed(el)}`;
 
-		logger.info(
-			`страница=${page} | встречено=${modsSeen} | моды +${modsCreated}/~${modsUpdated}/x${modsFailed} | файлы +${filesUploaded}/->${filesSkipped}/x${filesFailed} | ${rate} модов/сек | прошло=${this.formatElapsed(el)}`
-		);
+		if (this.canRenderLiveLine()) {
+			this.writeLiveLine(line);
+			return;
+		}
+
+		logger.info(line);
 	}
 
 	private renderFinal(): void {
@@ -139,5 +147,27 @@ export class ProgressTrackerService {
 			},
 			`Итоговый отчет`
 		);
+	}
+
+	private canRenderLiveLine(): boolean {
+		return Boolean(process.stdout.isTTY && process.stderr.isTTY);
+	}
+
+	private writeLiveLine(line: string): void {
+		process.stdout.clearLine(0);
+		process.stdout.cursorTo(0);
+		process.stdout.write(line);
+		this.liveLineActive = true;
+	}
+
+	private clearLiveLine(): void {
+		if (!this.liveLineActive || !this.canRenderLiveLine()) {
+			return;
+		}
+
+		process.stdout.clearLine(0);
+		process.stdout.cursorTo(0);
+		process.stdout.write('\n');
+		this.liveLineActive = false;
 	}
 }

@@ -150,7 +150,7 @@ export const bootstrap = async (): Promise<void> => {
 				{ name: '🚀 Запустить парсер модов (Scraper)', value: 'scrape' },
 				{ name: '🔄 Обновить файлы в S3 (для существующих модов)', value: 'update-s3' },
 				{ name: '🎯 Обновить файлы конкретного мода', value: 'update-single-mod-files' },
-				{ name: '♻️  Повторить файлы и моды после ошибки', value: 'retry-failed' },
+				{ name: '♻️ Повторить файлы и моды после ошибки', value: 'retry-failed' },
 				{ name: '❌ Выход', value: 'exit' }
 			]
 		}
