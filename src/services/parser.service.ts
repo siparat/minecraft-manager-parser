@@ -7,7 +7,7 @@ import { FileStorageService } from './file-storage.service';
 import { FailedFileItem, FailedModItem, FailedQueueService } from './failed-queue.service';
 import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
-import { Mod } from 'generated/prisma';
+import { Mod } from '../../generated/prisma';
 
 export class ParserService {
 	constructor(

@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
 	{
-		ignores: ['eslint.config.mjs']
+		ignores: ['eslint.config.mjs', 'prisma.config.ts']
 	},
 	eslint.configs.recommended,
 	...tseslint.configs.recommended,
@@ -55,7 +55,7 @@ export default tseslint.config(
 					bracketSameLine: true,
 					arrowParens: 'always',
 					parser: 'typescript',
-					endOfLine: 'lf'
+					endOfLine: 'auto'
 				}
 			]
 		}

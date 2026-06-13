@@ -25,7 +25,7 @@ const getStartPage = async (): Promise<number | undefined> => {
 const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 	const { action } = await inquirer.prompt([
 		{
-			type: 'list',
+			type: 'select',
 			name: 'action',
 			message: '❓ Для какого аккаунта парсить?',
 			choices: [
@@ -48,7 +48,7 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 const getSingleModSelector = async (modRepository: ModRepository): Promise<{ id: number }> => {
 	const { type } = await inquirer.prompt([
 		{
-			type: 'list',
+			type: 'select',
 			name: 'type',
 			message: 'Как найти мод для обновления файлов?',
 			choices: [
@@ -80,7 +80,7 @@ const getSingleModSelector = async (modRepository: ModRepository): Promise<{ id:
 
 		const { id } = await inquirer.prompt([
 			{
-				type: 'list',
+				type: 'select',
 				name: 'id',
 				message: 'Выберите мод',
 				choices: mods.map((mod) => ({ name: `${mod.title} (id: ${mod.id}, оценка: ${mod.rating})`, value: mod.id }))
@@ -127,7 +127,7 @@ export const bootstrap = async (): Promise<void> => {
 
 	const databaseUrl = await getUrlDatabase(config);
 
-	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
+	const prismaClient = new PrismaClient({ accelerateUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
 	const failedQueue = new FailedQueueService();
 	const runStateService = new RunStateService();
@@ -143,7 +143,7 @@ export const bootstrap = async (): Promise<void> => {
 
 	const { action } = await inquirer.prompt([
 		{
-			type: 'list',
+			type: 'select',
 			name: 'action',
 			message: 'Что вы хотите сделать?',
 			choices: [
