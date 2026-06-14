@@ -1,4 +1,3 @@
-import { PrismaClient } from '../generated/prisma';
 import { ConfigService } from './services/config.service';
 import { ParserGateway } from './gateways/parser.gateway';
 import { ParserService } from './services/parser.service';
@@ -12,6 +11,7 @@ import { ProgressTrackerService } from './services/progress-tracker.service';
 import { RunMode, RunStateService } from './services/run-state.service';
 import inquirer from 'inquirer';
 import { logger } from './utils/logger';
+import { PrismaClient } from '../generated/prisma';
 
 const getStartPage = async (): Promise<number | undefined> => {
 	const { startPage } = await inquirer.prompt({
@@ -127,14 +127,13 @@ export const bootstrap = async (): Promise<void> => {
 
 	const databaseUrl = await getUrlDatabase(config);
 
-	const prismaClient = new PrismaClient({ accelerateUrl: databaseUrl });
+	const prismaClient = new PrismaClient({ datasourceUrl: databaseUrl });
 	const modRepository = new ModRepository(prismaClient);
 	const failedQueue = new FailedQueueService();
 	const runStateService = new RunStateService();
 
 	const progressIntervalMs = Number(config.get('PROGRESS_INTERVAL_MS')) || 3000;
 	const progressTracker = new ProgressTrackerService(progressIntervalMs);
-
 	const contentParser = new ContentParserService();
 	const fileStorage = new FileStorageService(s3Service, gateway, config, progressTracker);
 	const service = new ParserService(gateway, modRepository, contentParser, fileStorage, progressTracker, failedQueue);
