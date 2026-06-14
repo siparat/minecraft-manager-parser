@@ -56,7 +56,7 @@ export class ParserGateway {
 	}
 
 	async getModSearchPage(pageNumber: number, retries = 3): Promise<string | null> {
-		const url = new URL(`search?page=${pageNumber}`, this.host).toString();
+		const url = new URL(`search/?page=${pageNumber}`, this.host).toString();
 
 		for (let i = 0; i < retries; i++) {
 			const page = await this.createPage();
