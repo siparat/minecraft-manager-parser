@@ -29,8 +29,9 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 			name: 'action',
 			message: '❓ Для какого аккаунта парсить?',
 			choices: [
-				{ name: '🟢 Первый', value: 1 },
-				{ name: '🔴 Второй', value: 2 }
+				{ name: '🟢 Первый (youlovehamit.kz)', value: 1 },
+				{ name: '🔴 Второй (l13dev.ru)', value: 2 },
+				{ name: '🟡 Третий (addonsmcpe.ru)', value: 3 }
 			]
 		}
 	]);
@@ -40,6 +41,8 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 			return config.getOrThrow('FIRST_DATABASE_URL');
 		case 2:
 			return config.getOrThrow('SECOND_DATABASE_URL');
+		case 3:
+			return config.getOrThrow('THIRD_DATABASE_URL');
 		default:
 			throw new Error('URL Базы данных не найдена');
 	}
