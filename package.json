@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "generate": "prisma generate",
-    "start": "node dist/bootstrap.js"
+    "start": "node dist/bootstrap.js",
+    "start:daemon": "node dist/daemon.js"
   },
   "keywords": [],
   "author": "",
