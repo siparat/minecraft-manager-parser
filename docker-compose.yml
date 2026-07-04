@@ -1,0 +1,31 @@
+services:
+  parser:
+    build:
+      context: .
+    container_name: minecraft-parser-${DAEMON_DATABASE:-2}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DAEMON_DATABASE: ${DAEMON_DATABASE:-2}
+      BROWSER_HEADLESS: "true"
+      FLARESOLVERR_URL: http://flaresolverr:8191
+    depends_on:
+      - flaresolverr
+    shm_size: 1gb
+    volumes:
+      - parser-data:/app/data
+      - .env:/app/.env
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: minecraft-parser-flaresolverr
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+
+volumes:
+  parser-data:
+    name: minecraft-parser-${DAEMON_DATABASE:-2}-data
+

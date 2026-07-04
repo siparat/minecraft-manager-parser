@@ -1,0 +1,15 @@
+node_modules
+dist
+generated
+.git
+.agents
+.env
+.env.*
+*.log
+coverage
+uploads
+parser-progress.json
+run-state.json
+run-state-daemon.json
+failed-items.json
+
