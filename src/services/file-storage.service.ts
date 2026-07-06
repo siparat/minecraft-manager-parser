@@ -8,8 +8,16 @@ import { ParserGateway } from '../gateways/parser.gateway';
 import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 
+const DEFAULT_FILE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+const parsePositiveInteger = (value: string | null, fallback: number): number => {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export class FileStorageService {
 	private s3PublicDomain: string;
+	private downloadTimeoutMs: number;
 
 	constructor(
 		private s3Service: S3Service,
@@ -18,12 +26,20 @@ export class FileStorageService {
 		private progressTracker?: ProgressTrackerService
 	) {
 		this.s3PublicDomain = config.getOrThrow('S3_PUBLIC_DOMAIN');
+		this.downloadTimeoutMs = parsePositiveInteger(
+			config.get('FILE_DOWNLOAD_TIMEOUT_MS'),
+			DEFAULT_FILE_DOWNLOAD_TIMEOUT_MS
+		);
 	}
 
 	async uploadFromUrl(url: string, modTitle?: string): Promise<string | null> {
+		const controller = new AbortController();
+		let timeout: NodeJS.Timeout | null = null;
+
 		try {
 			logger.info({ url, modTitle }, 'Начало скачивания файла по URL');
-			const response = await fetch(url, { redirect: 'follow' });
+			timeout = setTimeout(() => controller.abort(), this.downloadTimeoutMs);
+			const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
 
 			if (response.status !== 200 || !response.body) {
 				logger.error({ url, status: response.status, modTitle }, 'Не удалось скачать файл по ссылке');
@@ -47,6 +63,8 @@ export class FileStorageService {
 			logger.error({ err: error, url }, 'Ошибка при загрузке файла по URL');
 			this.progressTracker?.incFilesFailed();
 			return null;
+		} finally {
+			if (timeout) clearTimeout(timeout);
 		}
 	}
 

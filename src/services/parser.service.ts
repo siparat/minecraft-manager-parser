@@ -9,7 +9,19 @@ import { ProgressTrackerService } from './progress-tracker.service';
 import { logger } from '../utils/logger';
 import { Mod } from '../../generated/prisma';
 
+const DEFAULT_MOD_FILES_TIMEOUT_MS = 30 * 60 * 1000;
+
+const parsePositiveInteger = (value: string | null, fallback: number): number => {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export class ParserService {
+	private readonly modFilesTimeoutMs = parsePositiveInteger(
+		process.env.MOD_FILES_TIMEOUT_MS || null,
+		DEFAULT_MOD_FILES_TIMEOUT_MS
+	);
+
 	constructor(
 		private parserGateway: ParserGateway,
 		private modRepository: ModRepository,
@@ -38,7 +50,8 @@ export class ParserService {
 
 		for (const mod of mods) {
 			try {
-				const files = await this.saveModfilesToS3(mod);
+				logger.info({ modId: mod.id, slug: mod.parsedSlug }, 'Updating mod files');
+				const files = await this.saveModfilesToS3WithTimeout(mod);
 
 				if (files) {
 					await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
@@ -68,7 +81,8 @@ export class ParserService {
 
 		for (const mod of queue) {
 			try {
-				const files = await this.saveModfilesToS3(mod);
+				logger.info({ modId: mod.id, slug: mod.parsedSlug }, 'Updating mod files');
+				const files = await this.saveModfilesToS3WithTimeout(mod);
 
 				if (files) {
 					await this.modRepository.updateFiles(mod.id, Array.from(new Set(files)));
@@ -97,7 +111,8 @@ export class ParserService {
 		this.progressTracker?.incModsSeen(1);
 
 		try {
-			const files = await this.saveModfilesToS3(mod);
+			logger.info({ modId: mod.id, slug: mod.parsedSlug }, 'Updating single mod files');
+			const files = await this.saveModfilesToS3WithTimeout(mod);
 			if (!files) {
 				if (mod.parsedSlug) {
 					this.failedQueue?.addModFailure(mod.parsedSlug, 'single_mod_update_failed');
@@ -113,6 +128,25 @@ export class ParserService {
 				this.failedQueue?.addModFailure(mod.parsedSlug, 'single_mod_update_exception');
 			}
 			throw err;
+		}
+	}
+
+	private async saveModfilesToS3WithTimeout(
+		mod: Pick<Mod, 'id' | 'parsedSlug' | 'title' | 'files'>
+	): Promise<string[] | null> {
+		let timeout: NodeJS.Timeout | null = null;
+
+		try {
+			return await Promise.race([
+				this.saveModfilesToS3(mod),
+				new Promise<never>((_, reject) => {
+					timeout = setTimeout(() => {
+						reject(new Error(`Mod files update timeout after ${this.modFilesTimeoutMs}ms`));
+					}, this.modFilesTimeoutMs);
+				})
+			]);
+		} finally {
+			if (timeout) clearTimeout(timeout);
 		}
 	}
 
