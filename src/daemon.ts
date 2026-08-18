@@ -43,7 +43,9 @@ const databaseEnvByAlias: Record<string, string> = {
 	'2': 'SECOND_DATABASE_URL',
 	second: 'SECOND_DATABASE_URL',
 	'3': 'THIRD_DATABASE_URL',
-	third: 'THIRD_DATABASE_URL'
+	third: 'THIRD_DATABASE_URL',
+	'4': 'FOURTH_DATABASE_URL',
+	fourth: 'FOURTH_DATABASE_URL'
 };
 
 const parseBoolean = (value: string | null, fallback: boolean): boolean => {
