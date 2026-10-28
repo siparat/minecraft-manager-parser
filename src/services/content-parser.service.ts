@@ -47,27 +47,32 @@ export class ContentParserService {
 	}
 
 	private handleModCard(card: Element): ParsedModShort | null {
-		const slug = card.querySelector<HTMLAnchorElement>('.fancybox__content__title a')?.href.slice(1, -1);
-		const title = card.querySelector('.fancybox__content__title')?.textContent;
-		const shortDescription = card.querySelector('.fancybox__content__description')?.textContent || undefined;
-		const author = card.querySelector('.fancybox__header__content a')?.textContent || undefined;
-		const dateString = card
-			.querySelector('.fancybox__header__content small')
-			?.textContent?.replace('Published on ', '')
-			.trim();
+		const titleLink = card.querySelector<HTMLAnchorElement>('.fancybox__title-top a, .fancybox__content__title a');
+		const href = titleLink?.getAttribute('href') ?? undefined;
+		const slug = href?.replace(/^\/+|\/+$/g, '');
+		const title = titleLink?.textContent?.trim();
+		const shortDescription = card.querySelector('.fancybox__content__description')?.textContent?.trim() || undefined;
+		const author =
+			card.querySelector('.fancybox__author-line a, .fancybox__header__content a')?.textContent?.trim() || undefined;
+		const dateString = (
+			card.querySelector('.fancybox__publish-date')?.textContent ??
+			card.querySelector('.fancybox__header__content small')?.textContent?.replace('Published on ', '')
+		)?.trim();
 		const rating = card.querySelector('.fancybox__header__rating')?.textContent?.trim();
-		const image = card.querySelector<HTMLImageElement>('.post__img__static img')?.src;
+		const image = card.querySelector<HTMLImageElement>('.post__img__static img')?.getAttribute('src') ?? undefined;
 
 		if (!slug || !title || !image) {
 			return null;
 		}
+
+		const publishedAt = dateString ? new Date(dateString) : undefined;
 
 		return {
 			slug,
 			title,
 			shortDescription,
 			author,
-			publishedAt: dateString ? new Date(dateString) : undefined,
+			publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : undefined,
 			rating: Number(rating),
 			image
 		};

@@ -32,7 +32,8 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 				{ name: '🟢 Первый (youlovehamit.kz)', value: 1 },
 				{ name: '🔴 Второй (l13dev.ru)', value: 2 },
 				{ name: '🟡 Третий (addonsmcpe.ru)', value: 3 },
-				{ name: '🔵 Четвертый (mcmoddev.ru)', value: 4 }
+				{ name: '🔵 Четвертый (mcmoddev.ru)', value: 4 },
+				{ name: '🟣 Пятый (mineaddon.ru)', value: 5 }
 			]
 		}
 	]);
@@ -46,6 +47,8 @@ const getUrlDatabase = async (config: ConfigService): Promise<string> => {
 			return config.getOrThrow('THIRD_DATABASE_URL');
 		case 4:
 			return config.getOrThrow('FOURTH_DATABASE_URL');
+		case 5:
+			return config.getOrThrow('FIFTH_DATABASE_URL');
 		default:
 			throw new Error('URL Базы данных не найдена');
 	}
